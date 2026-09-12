@@ -135,6 +135,7 @@
             text-transform: uppercase;
             line-height: 1.1;
             margin-bottom: 4px;
+            transition: opacity 0.3s ease;
         }
 
         #prayer-countdown {
@@ -146,6 +147,7 @@
             margin: 4px auto 8px auto;
             width: fit-content;
             line-height: 1.2;
+            transition: opacity 0.3s ease;
         }
 
         #prayer-countdown.bg-green { background-color: #2e7d32; color: #ffffff; }
@@ -158,6 +160,16 @@
             font-weight: 800;
             color: #ffffff;
             letter-spacing: 2px;
+            transition: opacity 0.3s ease;
+        }
+
+        /* CLASS ANIMASI BERKEDIP DENGAN CSS */
+        .blink-element {
+            animation: blinker 1s linear infinite;
+        }
+
+        @keyframes blinker {
+            50% { opacity: 0; }
         }
 
         #date {
@@ -517,7 +529,8 @@
                 }
             }
 
-            document.getElementById('next-prayer-info').innerText = `${activePrayer} ${prayerSchedules[activePrayer]}`;
+            const nextPrayerInfoEl = document.getElementById('next-prayer-info');
+            nextPrayerInfoEl.innerText = `${activePrayer} ${prayerSchedules[activePrayer]}`;
 
             listOrder.forEach(prayer => {
                 const card = document.getElementById(`card-${prayer}`);
@@ -531,29 +544,47 @@
             });
 
             const countdownEl = document.getElementById('prayer-countdown');
+            const clockEl = document.getElementById('clock');
             countdownEl.className = '';
 
-            if (status === 'past') {
-                const elapsedMinutes = Math.floor(timeDiff / 60);
-                countdownEl.innerText = `${elapsedMinutes} menit lalu`;
-                countdownEl.classList.add('bg-blue');
+            // CEK APAKAH KURANG DARI ATAU SAMA DENGAN 30 DETIK SETELAH ADZAN TIBA
+            if (status === 'past' && timeDiff <= 30) {
+                countdownEl.innerText = `telah tiba`;
+                countdownEl.classList.add('bg-red');
                 countdownEl.style.display = 'block';
-            } else if (status === 'upcoming') {
-                const diffMinutes = Math.ceil(timeDiff / 60);
 
-                if (timeDiff <= 15 * 60 && timeDiff > 0) {
-                    countdownEl.innerText = `${diffMinutes} menit lagi`;
+                // AKTIFKAN BERKEDIP PADA 3 ELEMEN KHUSUS
+                clockEl.classList.add('blink-element');
+                countdownEl.classList.add('blink-element');
+                nextPrayerInfoEl.classList.add('blink-element');
+            } else {
+                // MATIKAN EFEK BERKEDIP JIKA LEBIH DARI 30 DETIK
+                clockEl.classList.remove('blink-element');
+                countdownEl.classList.remove('blink-element');
+                nextPrayerInfoEl.classList.remove('blink-element');
+
+                if (status === 'past') {
+                    const elapsedMinutes = Math.floor(timeDiff / 60);
+                    countdownEl.innerText = `${elapsedMinutes} menit lalu`;
+                    countdownEl.classList.add('bg-blue');
                     countdownEl.style.display = 'block';
+                } else if (status === 'upcoming') {
+                    const diffMinutes = Math.ceil(timeDiff / 60);
 
-                    if (timeDiff <= 5 * 60) {
-                        countdownEl.classList.add('bg-red');
-                    } else if (timeDiff <= 10 * 60) {
-                        countdownEl.classList.add('bg-yellow');
+                    if (timeDiff <= 15 * 60 && timeDiff > 0) {
+                        countdownEl.innerText = `${diffMinutes} menit lagi`;
+                        countdownEl.style.display = 'block';
+
+                        if (timeDiff <= 5 * 60) {
+                            countdownEl.classList.add('bg-red');
+                        } else if (timeDiff <= 10 * 60) {
+                            countdownEl.classList.add('bg-yellow');
+                        } else {
+                            countdownEl.classList.add('bg-green');
+                        }
                     } else {
-                        countdownEl.classList.add('bg-green');
+                        countdownEl.style.display = 'none';
                     }
-                } else {
-                    countdownEl.style.display = 'none';
                 }
             }
 
