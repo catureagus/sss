@@ -100,7 +100,7 @@
         }
 
         .city-selector-wrapper::after {
-            content: '▼';
+            content: ' ';
             font-size: 0.6rem;
             color: #4caf50;
             position: absolute;
@@ -227,8 +227,8 @@
             <div class="title-line-2">HARINZAHAKAM</div>
             <div class="city-selector-wrapper">
                 <select id="city-select" class="city-select" onchange="handleCityChange(this.value)">
-                    <option value="coord">📍 Masukkan Koordinat</option>
-                    <option value="pluscode">➕ Masukkan Plus Codes</option>
+                    <option value="coord">  Masukkan Koordinat</option>
+                    <option value="pluscode">  Masukkan Plus Codes</option>
                     <option value="1221" selected>Kota Bekasi</option>
                     <option value="1615">Kota Kediri</option>
                     <option value="1614">Kab. Kediri (Pare)</option>  
@@ -382,8 +382,7 @@
                     };
                     updatePrayerUI();
 
-                    // TAMBAHKAN OPSI BARU DENGAN COORD DI DROPDOWN
-                    updateDropdownLabel(`📍 ${coordStr}`);
+                    updateDropdownLabel(`  ${coordStr}`);
                 }
             } catch (err) {
                 updatePrayerUI();
@@ -406,12 +405,11 @@
                     };
                     updatePrayerUI();
 
-                    // TAMPILKAN ALAMAT LOKASI DARI PLUS CODE
                     let locationName = plusCodeStr;
                     if (data.data.meta && data.data.meta.timezone) {
                         locationName = plusCodeStr; 
                     }
-                    updateDropdownLabel(`➕ ${locationName}`);
+                    updateDropdownLabel(`  ${locationName}`);
                 } else {
                     alert("Plus Code tidak ditemukan atau tidak valid.");
                     document.getElementById('city-select').value = currentCityId;
@@ -422,7 +420,6 @@
             }
         }
 
-        // FUNGSI UNTUK MEMPERBARUI NAMA KOTA DENGAN WORD-WRAP JUGA
         function updateDropdownLabel(labelName) {
             const selectEl = document.getElementById('city-select');
             
@@ -473,38 +470,51 @@
             let status = '';
             let timeDiff = 0;
 
+            // 1. UTAMAKAN SHOLAT MENDATANG (Prioritas "xx menit lagi")
+            let minUpcomingDiff = Infinity;
             for (let prayer of listOrder) {
                 const pSec = timeToSeconds(prayerSchedules[prayer]);
-                const diff = currentSec - pSec;
+                const diff = pSec - currentSec;
 
-                if (diff >= 0 && diff <= 3600) {
+                if (diff > 0 && diff < minUpcomingDiff) {
+                    minUpcomingDiff = diff;
                     activePrayer = prayer;
-                    status = 'past';
-                    timeDiff = diff;
-                    break;
                 }
             }
 
-            if (!activePrayer) {
-                let minUpcomingDiff = Infinity;
-                for (let prayer of listOrder) {
-                    const pSec = timeToSeconds(prayerSchedules[prayer]);
-                    const diff = pSec - currentSec;
-
-                    if (diff > 0 && diff < minUpcomingDiff) {
-                        minUpcomingDiff = diff;
-                        activePrayer = prayer;
-                    }
-                }
-
-                if (!activePrayer) {
-                    activePrayer = 'Subuh';
-                    const subuhSec = timeToSeconds(prayerSchedules['Subuh']);
-                    minUpcomingDiff = (24 * 3600 - currentSec) + subuhSec;
-                }
-
+            if (activePrayer) {
                 status = 'upcoming';
                 timeDiff = minUpcomingDiff;
+            } else {
+                // Jika jadwal hari ini sudah terlewati semua (menuju Subuh besok)
+                const isyaSec = timeToSeconds(prayerSchedules['Isya']);
+                const isyaDiff = currentSec - isyaSec;
+
+                if (isyaDiff >= 0 && isyaDiff <= 3600) {
+                    activePrayer = 'Isya';
+                    status = 'past';
+                    timeDiff = isyaDiff;
+                } else {
+                    activePrayer = 'Subuh';
+                    const subuhSec = timeToSeconds(prayerSchedules['Subuh']);
+                    status = 'upcoming';
+                    timeDiff = (24 * 3600 - currentSec) + subuhSec;
+                }
+            }
+
+            // 2. CEK SHOLAT YANG BARU LEWAT (1 JAM TERAKHIR) HANYA JIKA WAKTU SHOLAT MENDATANG MASIH JAUH (> 1 JAM)
+            if (status === 'upcoming' && timeDiff > 3600) {
+                for (let prayer of listOrder) {
+                    const pSec = timeToSeconds(prayerSchedules[prayer]);
+                    const diff = currentSec - pSec;
+
+                    if (diff >= 0 && diff <= 3600) {
+                        activePrayer = prayer;
+                        status = 'past';
+                        timeDiff = diff;
+                        break;
+                    }
+                }
             }
 
             document.getElementById('next-prayer-info').innerText = `${activePrayer} ${prayerSchedules[activePrayer]}`;
