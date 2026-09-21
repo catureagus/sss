@@ -361,7 +361,7 @@
                     (position) => {
                         const lat = position.coords.latitude;
                         const lon = position.coords.longitude;
-                        fetchPrayerTimesByCoord(`${lat}, ${lon}`, "📍 Lokasi HP / GPS");
+                        fetchPrayerTimesByCoord(`${lat}, ${lon}`, false);
                     },
                     (error) => {
                         alert("Gagal mendapatkan lokasi HP. Menampilkan jadwal Kota Bekasi sebagai cadangan.");
