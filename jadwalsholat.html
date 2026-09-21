@@ -239,6 +239,619 @@
             <div class="title-line-2">HARINZAHAKAM</div>
             <div class="city-selector-wrapper">
                 <select id="city-select" class="city-select" onchange="handleCityChange(this.value)">
+                    <option value="gps" selected>📍 Gunakan Lokasi Saya (GPS)</option>
+                    <option value="coord">  Masukkan Koordinat</option>
+                    <option value="pluscode">  Masukkan Plus Codes</option>
+                    <option value="1221">Kota Bekasi</option>
+                    <option value="1615">Kota Kediri</option>
+                    <option value="1614">Kab. Kediri (Pare)</option>  
+                    <option value="1223">Kota Depok</option>
+                    <option value="1214">Kab. Kuningan</option>
+                    <option value="1301">Kota Jakarta</option>
+                    <option value="1219">Kota Bandung</option>
+                    <option value="1609">Kota Surabaya</option>
+                    <option value="1406">Kota Semarang</option>
+                    <option value="1507">Kota Yogyakarta</option>
+                    <option value="0228">Kota Medan</option>
+                    <option value="0611">Kota Palembang</option>
+                    <option value="2504">Kota Makassar</option>
+                </select>
+            </div>
+        </header>
+
+        <div class="clock-box">
+            <div id="next-prayer-info">-- --:--</div>
+            <div id="prayer-countdown"></div>
+            <div id="clock">00:00:00</div>
+            <div id="date">Memuat Tanggal...</div>
+        </div>
+
+        <div class="prayer-list">
+            <div class="prayer-item" id="card-Subuh">
+                <span class="prayer-name">Subuh</span>
+                <span class="prayer-time" id="time-Subuh">--:--</span>
+            </div>
+            <div class="prayer-item" id="card-Syuruq">
+                <span class="prayer-name">Syuruq</span>
+                <span class="prayer-time" id="time-Syuruq">--:--</span>
+            </div>
+            <div class="prayer-item" id="card-Dzuhur">
+                <span class="prayer-name">Dzuhur</span>
+                <span class="prayer-time" id="time-Dzuhur">--:--</span>
+            </div>
+            <div class="prayer-item" id="card-Ashar">
+                <span class="prayer-name">Ashar</span>
+                <span class="prayer-time" id="time-Ashar">--:--</span>
+            </div>
+            <div class="prayer-item" id="card-Maghrib">
+                <span class="prayer-name">Maghrib</span>
+                <span class="prayer-time" id="time-Maghrib">--:--</span>
+            </div>
+            <div class="prayer-item" id="card-Isya">
+                <span class="prayer-name">Isya</span>
+                <span class="prayer-time" id="time-Isya">--:--</span>
+            </div>
+        </div>
+
+        <img src="sss.jpg" alt="Gambar Banner" class="footer-image">
+    </div>
+
+    <audio id="audio-bleep" src="bleep.mp3" preload="auto"></audio>
+
+    <script>
+        let prayerSchedules = {
+            'Subuh': '04:35',
+            'Syuruq': '05:48',
+            'Dzuhur': '11:54',
+            'Ashar': '15:10',
+            'Maghrib': '17:56',
+            'Isya': '19:05'
+        };
+
+        let currentCityId = "gps";
+        let wakeLock = null;
+
+        async function activateKeepScreenOn() {
+            try {
+                if ('wakeLock' in navigator) {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                }
+            } catch (err) {
+                console.log('Wake Lock Standard Error:', err.message);
+            }
+
+            const video = document.getElementById('no-sleep-video');
+            if (video) {
+                video.play().catch(e => console.log('Video Keep-Alive Error:', e));
+            }
+        }
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                activateKeepScreenOn();
+            }
+        });
+
+        function handleCityChange(val) {
+            if (val === 'gps') {
+                getUserLocation();
+            } else if (val === 'coord') {
+                const input = prompt("Masukkan Koordinat (Latitude, Longitude):\nContoh: -6.2383, 106.9756", "-6.2383, 106.9756");
+                if (input && input.trim() !== "") {
+                    fetchPrayerTimesByCoord(input.trim());
+                } else {
+                    document.getElementById('city-select').value = currentCityId;
+                }
+            } else if (val === 'pluscode') {
+                const input = prompt("Masukkan Plus Code Google Maps:\nContoh: 7P32+9V Bekasi", "7P32+9V Bekasi");
+                if (input && input.trim() !== "") {
+                    fetchPrayerTimesByPlusCode(input.trim());
+                } else {
+                    document.getElementById('city-select').value = currentCityId;
+                }
+            } else {
+                currentCityId = val;
+                fetchPrayerTimes(currentCityId);
+            }
+        }
+
+        function getUserLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const lat = position.coords.latitude;
+                        const lon = position.coords.longitude;
+                        fetchPrayerTimesByCoord(`${lat}, ${lon}`, "📍 Lokasi HP / GPS");
+                    },
+                    (error) => {
+                        alert("Gagal mendapatkan lokasi HP. Menampilkan jadwal Kota Bekasi sebagai cadangan.");
+                        // Jika akses GPS ditolak, beralih ke Bekasi sebagai cadangan
+                        document.getElementById('city-select').value = "1221";
+                        currentCityId = "1221";
+                        fetchPrayerTimes("1221");
+                    }
+                );
+            } else {
+                alert("Browser tidak mendukung geolokasi. Menampilkan Kota Bekasi.");
+                document.getElementById('city-select').value = "1221";
+                currentCityId = "1221";
+                fetchPrayerTimes("1221");
+            }
+        }
+
+        async function fetchPrayerTimes(cityId) {
+            try {
+                const today = new Date();
+                const year = today.getFullYear();
+                const month = String(today.getMonth() + 1).padStart(2, '0');
+                const day = String(today.getDate()).padStart(2, '0');
+                
+                const response = await fetch(`https://api.myquran.com/v2/sholat/jadwal/${cityId}/${year}/${month}/${day}`);
+                const data = await response.json();
+                
+                if(data.status) {
+                    const jadwal = data.data.jadwal;
+                    prayerSchedules = {
+                        'Subuh': jadwal.subuh,
+                        'Syuruq': jadwal.terbit || '05:48',
+                        'Dzuhur': jadwal.dzuhur,
+                        'Ashar': jadwal.ashar,
+                        'Maghrib': jadwal.maghrib,
+                        'Isya': jadwal.isya
+                    };
+                    updatePrayerUI();
+                }
+            } catch (err) {
+                updatePrayerUI();
+            }
+        }
+
+        async function fetchPrayerTimesByCoord(coordStr, customLabel = null) {
+            try {
+                const parts = coordStr.split(',');
+                if (parts.length < 2) return;
+                const lat = parts[0].trim();
+                const lon = parts[1].trim();
+
+                const response = await fetch(`https://api.aladhan.com/v1/timings?latitude=${lat}&longitude=${lon}&method=20`);
+                const data = await response.json();
+
+                if (data.code === 200) {
+                    const timings = data.data.timings;
+                    prayerSchedules = {
+                        'Subuh': timings.Fajr,
+                        'Syuruq': timings.Sunrise,
+                        'Dzuhur': timings.Dhuhr,
+                        'Ashar': timings.Asr,
+                        'Maghrib': timings.Maghrib,
+                        'Isya': timings.Isha
+                    };
+                    updatePrayerUI();
+
+                    updateDropdownLabel(customLabel || `  ${coordStr}`);
+                }
+            } catch (err) {
+                updatePrayerUI();
+            }
+        }
+
+        async function fetchPrayerTimesByPlusCode(plusCodeStr) {
+            try {
+                const response = await fetch(`https://api.aladhan.com/v1/timingsByAddress?address=${encodeURIComponent(plusCodeStr)}&method=20`);
+                const data = await response.json();
+
+                if (data.code === 200) {
+                    const timings = data.data.timings;
+                    prayerSchedules = {
+                        'Subuh': timings.Fajr,
+                        'Syuruq': timings.Sunrise,
+                        'Dzuhur': timings.Dhuhr,
+                        'Ashar': timings.Asr,
+                        'Maghrib': timings.Maghrib,
+                        'Isya': timings.Isha
+                    };
+                    updatePrayerUI();
+
+                    let locationName = plusCodeStr;
+                    if (data.data.meta && data.data.meta.timezone) {
+                        locationName = plusCodeStr; 
+                    }
+                    updateDropdownLabel(`  ${locationName}`);
+                } else {
+                    alert("Plus Code tidak ditemukan atau tidak valid.");
+                    document.getElementById('city-select').value = currentCityId;
+                }
+            } catch (err) {
+                alert("Gagal memuat lokasi berdasarkan Plus Code.");
+                document.getElementById('city-select').value = currentCityId;
+            }
+        }
+
+        function updateDropdownLabel(labelName) {
+            const selectEl = document.getElementById('city-select');
+            
+            let customOpt = document.getElementById('custom-location-option');
+            if (!customOpt) {
+                customOpt = document.createElement('option');
+                customOpt.id = 'custom-location-option';
+                selectEl.appendChild(customOpt);
+            }
+            
+            customOpt.value = 'custom_active';
+            customOpt.text = labelName;
+            selectEl.value = 'custom_active';
+            currentCityId = 'custom_active';
+        }
+
+        function updatePrayerUI() {
+            for (let name in prayerSchedules) {
+                const el = document.getElementById(`time-${name}`);
+                if (el) el.innerText = prayerSchedules[name];
+            }
+        }
+
+        function timeToSeconds(timeStr) {
+            const parts = timeStr.split(':');
+            return parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60;
+        }
+
+        function updateClock() {
+            const now = new Date();
+            const hrs = String(now.getHours()).padStart(2, '0');
+            const mins = String(now.getMinutes()).padStart(2, '0');
+            const secs = String(now.getSeconds()).padStart(2, '0');
+            
+            document.getElementById('clock').innerText = `${hrs}:${mins}:${secs}`;
+
+            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+            document.getElementById('date').innerText = now.toLocaleDateString('id-ID', options);
+
+            checkNextPrayer(now);
+        }
+
+        function checkNextPrayer(now) {
+            const currentSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+            const listOrder = ['Subuh', 'Syuruq', 'Dzuhur', 'Ashar', 'Maghrib', 'Isya'];
+
+            let activePrayer = null;
+            let status = '';
+            let timeDiff = 0;
+
+            // 1. UTAMAKAN SHOLAT MENDATANG (Prioritas "xx menit lagi")
+            let minUpcomingDiff = Infinity;
+            for (let prayer of listOrder) {
+                const pSec = timeToSeconds(prayerSchedules[prayer]);
+                const diff = pSec - currentSec;
+
+                if (diff > 0 && diff < minUpcomingDiff) {
+                    minUpcomingDiff = diff;
+                    activePrayer = prayer;
+                }
+            }
+
+            if (activePrayer) {
+                status = 'upcoming';
+                timeDiff = minUpcomingDiff;
+            } else {
+                // Jika jadwal hari ini sudah terlewati semua (menuju Subuh besok)
+                const isyaSec = timeToSeconds(prayerSchedules['Isya']);
+                const isyaDiff = currentSec - isyaSec;
+
+                if (isyaDiff >= 0 && isyaDiff <= 3600) {
+                    activePrayer = 'Isya';
+                    status = 'past';
+                    timeDiff = isyaDiff;
+                } else {
+                    activePrayer = 'Subuh';
+                    const subuhSec = timeToSeconds(prayerSchedules['Subuh']);
+                    status = 'upcoming';
+                    timeDiff = (24 * 3600 - currentSec) + subuhSec;
+                }
+            }
+
+            // 2. CEK SHOLAT YANG BARU LEWAT (1 JAM TERAKHIR) HANYA JIKA WAKTU SHOLAT MENDATANG MASIH JAUH (> 1 JAM)
+            if (status === 'upcoming' && timeDiff > 3600) {
+                for (let prayer of listOrder) {
+                    const pSec = timeToSeconds(prayerSchedules[prayer]);
+                    const diff = currentSec - pSec;
+
+                    if (diff >= 0 && diff <= 3600) {
+                        activePrayer = prayer;
+                        status = 'past';
+                        timeDiff = diff;
+                        break;
+                    }
+                }
+            }
+
+            const nextPrayerInfoEl = document.getElementById('next-prayer-info');
+            nextPrayerInfoEl.innerText = `${activePrayer} ${prayerSchedules[activePrayer]}`;
+
+            listOrder.forEach(prayer => {
+                const card = document.getElementById(`card-${prayer}`);
+                if (card) {
+                    if (prayer === activePrayer) {
+                        card.style.display = 'none';
+                    } else {
+                        card.style.display = 'flex';
+                    }
+                }
+            });
+
+            const countdownEl = document.getElementById('prayer-countdown');
+            const clockEl = document.getElementById('clock');
+            countdownEl.className = '';
+
+            // CEK APAKAH KURANG DARI ATAU SAMA DENGAN 30 DETIK SETELAH ADZAN TIBA
+            if (status === 'past' && timeDiff <= 30) {
+                countdownEl.innerText = `telah tiba`;
+                countdownEl.classList.add('bg-red');
+                countdownEl.style.display = 'block';
+
+                // AKTIFKAN BERKEDIP PADA 3 ELEMEN KHUSUS
+                clockEl.classList.add('blink-element');
+                countdownEl.classList.add('blink-element');
+                nextPrayerInfoEl.classList.add('blink-element');
+            } else {
+                // MATIKAN EFEK BERKEDIP JIKA LEBIH DARI 30 DETIK
+                clockEl.classList.remove('blink-element');
+                countdownEl.classList.remove('blink-element');
+                nextPrayerInfoEl.classList.remove('blink-element');
+
+                if (status === 'past') {
+                    const elapsedMinutes = Math.floor(timeDiff / 60);
+                    countdownEl.innerText = `${elapsedMinutes} menit lalu`;
+                    countdownEl.classList.add('bg-blue');
+                    countdownEl.style.display = 'block';
+                } else if (status === 'upcoming') {
+                    const diffMinutes = Math.ceil(timeDiff / 60);
+
+                    if (timeDiff <= 15 * 60 && timeDiff > 0) {
+                        countdownEl.innerText = `${diffMinutes} menit lagi`;
+                        countdownEl.style.display = 'block';
+
+                        if (timeDiff <= 5 * 60) {
+                            countdownEl.classList.add('bg-red');
+                        } else if (timeDiff <= 10 * 60) {
+                            countdownEl.classList.add('bg-yellow');
+                        } else {
+                            countdownEl.classList.add('bg-green');
+                        }
+                    } else {
+                        countdownEl.style.display = 'none';
+                    }
+                }
+            }
+
+            if (timeDiff === 0 && status === 'past') {
+                const audio = document.getElementById('audio-bleep');
+                if(audio) audio.play().catch(e => console.log(e));
+            }
+        }
+
+        window.addEventListener('click', activateKeepScreenOn, { once: true });
+        window.addEventListener('touchstart', function() {
+            activateKeepScreenOn();
+            const audio = document.getElementById('audio-bleep');
+            if(audio) {
+                audio.play().then(() => {
+                    audio.pause();
+                    audio.currentTime = 0;
+                }).catch(() => {});
+            }
+        }, { once: true });
+
+        setInterval(updateClock, 1000);
+        updateClock();
+        // Langsung minta lokasi GPS saat pertama kali halaman dibuka
+        getUserLocation();
+    </script>
+</body>
+</html>                justify-content: center;
+                align-items: center;
+            }
+            #mobile-container {
+                width: 100vh;
+                height: 100vw;
+                transform: rotate(-90deg);
+                transform-origin: center center;
+            }
+        }
+
+        /* HEADER 3 BARIS */
+        header {
+            text-align: center;
+            margin-top: 5px;
+            margin-bottom: 8px;
+        }
+
+        .title-line-1 {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #aaa;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .title-line-2 {
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: #4caf50;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin: 2px 0;
+        }
+
+        /* TAMPILAN PILIH KOTA DENGAN DROP-DOWN / SELECT & WORD-WRAP */
+        .city-selector-wrapper {
+            display: inline-block;
+            position: relative;
+            max-width: 90%;
+            margin: 0 auto;
+        }
+
+        .city-select {
+            background: transparent;
+            color: #ddd;
+            font-size: 1rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            border: none;
+            outline: none;
+            cursor: pointer;
+            text-align-last: center;
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            padding-right: 15px;
+            
+            /* DUKUNGAN WORD WRAP UNTUK NAMA PANJANG */
+            white-space: normal;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            max-width: 100%;
+        }
+
+        .city-selector-wrapper::after {
+            content: ' ';
+            font-size: 0.6rem;
+            color: #4caf50;
+            position: absolute;
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            pointer-events: none;
+        }
+
+        .city-select option {
+            background-color: #1e1e1e;
+            color: #ffffff;
+            font-size: 0.9rem;
+            text-transform: none;
+            white-space: normal;
+        }
+
+        /* JAM & TANGGAL & INFORMASI SHOLAT */
+        .clock-box {
+            background: #1e1e1e;
+            border-radius: 16px;
+            padding: 12px 10px;
+            text-align: center;
+            margin-bottom: 8px;
+            border: 1px solid #2a2a2a;
+        }
+
+        #next-prayer-info {
+            font-size: 3rem;
+            font-weight: 800;
+            color: #ffeb3b;
+            text-transform: uppercase;
+            line-height: 1.1;
+            margin-bottom: 4px;
+            transition: opacity 0.3s ease;
+        }
+
+        #prayer-countdown {
+            display: none;
+            font-size: 1.8rem;
+            font-weight: 800;
+            padding: 4px 12px;
+            border-radius: 10px;
+            margin: 4px auto 8px auto;
+            width: fit-content;
+            line-height: 1.2;
+            transition: opacity 0.3s ease;
+        }
+
+        #prayer-countdown.bg-green { background-color: #2e7d32; color: #ffffff; }
+        #prayer-countdown.bg-yellow { background-color: #fbc02d; color: #000000; }
+        #prayer-countdown.bg-red { background-color: #c62828; color: #ffffff; }
+        #prayer-countdown.bg-blue { background-color: #1565c0; color: #ffffff; }
+
+        #clock {
+            font-size: 2.2rem;
+            font-weight: 800;
+            color: #ffffff;
+            letter-spacing: 2px;
+            transition: opacity 0.3s ease;
+        }
+
+        /* CLASS ANIMASI BERKEDIP DENGAN CSS */
+        .blink-element {
+            animation: blinker 1s linear infinite;
+        }
+
+        @keyframes blinker {
+            50% { opacity: 0; }
+        }
+
+        #date {
+            font-size: 0.85rem;
+            color: #888888;
+            margin-top: 2px;
+        }
+
+        /* JADWAL LIST: GRID 2 KOLOM */
+        .prayer-list {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .prayer-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #1e1e1e;
+            padding: 10px 12px;
+            border-radius: 12px;
+            border-left: 4px solid #333;
+            transition: all 0.3s ease;
+        }
+
+        .prayer-name {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: #eee;
+        }
+
+        .prayer-time {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #ffeb3b;
+        }
+
+        #no-sleep-video {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            opacity: 0.01;
+            pointer-events: none;
+        }
+
+        .footer-image {
+            display: block;
+            width: 100%;
+            max-height: 120px;
+            object-fit: contain;
+            margin: 5px auto 0 auto;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body>
+
+    <video id="no-sleep-video" playsinline loop muted>
+        <source src="data:video/mp4;base64,AAAAHGZ0eXBpc29tAAACAGlzb21pc28yYXZjMQAAAAhmcmVlAAAAAG1kYXQAAAGzAAUABAAAAAA=" type="video/mp4">
+    </video>
+
+    <div id="mobile-container">
+        <header>
+            <div class="title-line-1">Jadwal Sholat</div>
+            <div class="title-line-2">HARINZAHAKAM</div>
+            <div class="city-selector-wrapper">
+                <select id="city-select" class="city-select" onchange="handleCityChange(this.value)">
                     <option value="coord">  Masukkan Koordinat</option>
                     <option value="pluscode">  Masukkan Plus Codes</option>
                     <option value="1221" selected>Kota Bekasi</option>
